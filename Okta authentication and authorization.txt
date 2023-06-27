@@ -1,0 +1,157 @@
+Okta authentication and authorization in a microservice architecture using Spring Cloud:
+----------------------------------------------------------------------------------------
+To implement Spring Boot Security with Okta authentication in your API Gateway,you can follow these steps:
+
+Step 1: Set up Okta Account and Application:
+--------------------------------------------
+Sign up for an Okta Developer Account at https://developer.okta.com/.
+Create a new application in the Okta Admin Console. Make note of the client ID and client secret generated for your application.create people and group and assign both people and group in application.
+
+Step 2: Add the necessary Okta dependencies to your pom.xml file:
+------------------------------------------------------------------
+                <dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>com.okta.spring</groupId>
+			<artifactId>okta-spring-boot-starter</artifactId>
+			<version>2.1.6</version>
+		</dependency>
+
+
+step:3)Configure Okta properties in your application.properties or application.yml file:
+----------------------------------------------------------------------------------------
+
+okta:
+  oauth2:
+    issuer: https://dev-05594919.okta.com/oauth2/default
+    audience: api://default
+    client-id: 0oaa45cyabn1vT5GP5d7
+    client-secret: dVpcZbqjwRmr15l5JwW6PgiOPbWrndoYqjE9q92k
+    scopes: openid, email, profile, offline_access
+
+
+Step 4) Configure Spring Boot Security with Okta:
+--------------------------------------------------
+i)Create a @Configuration class to configure Spring Security:
+-------------------------------------------------------------
+eg:
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
+import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.web.server.SecurityWebFilterChain;
+
+@Configuration
+@EnableWebFluxSecurity
+public class SecurityConfig {
+
+    @Bean
+    public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity httpSecurity){
+
+        httpSecurity
+                .authorizeExchange()
+                .anyExchange()
+                .authenticated()
+                .and()
+                .oauth2Client()
+                .and()
+                .oauth2ResourceServer()
+                .jwt();
+
+        return httpSecurity.build();
+    }
+}
+
+
+step:5)create controller for okta:
+----------------------------------
+
+import com.demo.gateway.model.AuthResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
+import org.springframework.security.oauth2.client.annotation.RegisteredOAuth2AuthorizedClient;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+@RestController
+@RequestMapping("/auth")
+public class AuthController {
+
+    private Logger logger = LoggerFactory.getLogger(AuthController.class);
+
+    @GetMapping("/login")
+    public ResponseEntity<AuthResponse> login(
+            @RegisteredOAuth2AuthorizedClient("okta") OAuth2AuthorizedClient client,
+            @AuthenticationPrincipal OidcUser user,
+            Model model
+    ) {
+
+        logger.info("user email id : {}", user.getEmail());
+        //creating AuthResponse class object
+        AuthResponse authResponse = new AuthResponse();
+
+        //Setting Email,AccessToken,RefreshToken,ExpireAt to AuthResponse Class Object
+        authResponse.setUserId(user.getEmail());
+        authResponse.setAccessToken(client.getAccessToken().getTokenValue());
+        authResponse.setRefreshToken(client.getRefreshToken().getTokenValue());
+        authResponse.setExpireAt(client.getAccessToken().getExpiresAt().getEpochSecond());
+
+        List<String> authorities = user.getAuthorities().stream().map(grantedAuthority -> {//convert granted authorities into collection of string
+            return grantedAuthority.getAuthority();
+        }).collect(Collectors.toList());
+
+
+        authResponse.setAuthorities(authorities);
+
+        return new ResponseEntity<>(authResponse, HttpStatus.OK);
+    }
+}
+
+create AuthResponse class:
+--------------------------
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.Collection;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class AuthResponse {
+
+    private String userId;
+
+    private String accessToken;
+
+    private String refreshToken;
+
+    private long expireAt;
+
+    private Collection<String> authorities;
+}
+
+step:6) Test Authentication:
+-----------------------------
+Access your protected endpoints through the API Gateway. The requests will be intercepted by the Okta authentication configured in the SecurityConfig class. Users will be redirected to the Okta login page for authentication, and upon successful authentication, they will be granted access to the requested resources.
+
+
+
+
+
+
+
+
